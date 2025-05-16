@@ -1,0 +1,17 @@
+# Ignore output folders
+Density_profiles/
+Output/
+
+# C
+*.o
+*.out
+*.exe
+
+# VS Code
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.env
