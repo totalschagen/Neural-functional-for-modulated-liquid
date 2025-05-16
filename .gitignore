@@ -1,7 +1,5 @@
-# Ignore output folders
-Density_profiles/
-Output/
-
+# Ignore output files of GCMC
+*.dat
 # C
 *.o
 *.out
@@ -15,3 +13,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.env
+
+# Large files
+*.zip
+*.pt
