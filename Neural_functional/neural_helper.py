@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 
 def load_df(name,density_profiles_dir):
+    print("Loading dataframe: ",name)
     name = os.path.join( density_profiles_dir, name)
     df = pd.read_csv(name,delimiter = " ")
     nperiod = (list(df.columns)[-2])
@@ -37,8 +38,12 @@ def cut_density_windows_torch_unpadded(df, window_dim,n_windows):
     windows = unfolded_rho.contiguous().view(-1, window_dim, window_dim)
     return windows
 
-def cut_density_windows_torch_padded(df, window_dim,n_windows):
+
+## NOTE: This function IS NOT WORKING CORRECTLY, stride optimized for GPUmem on local
+def cut_density_windows_torch_padded(df, window_dim):
+    stride = 18
     rhomatrix = df.pivot(index='y', columns='x', values='rho').values
+    mulocmatrix = df.pivot(index='y', columns='x', values='muloc').values
     pad_size = window_dim//2
     rhotensor = torch.tensor(rhomatrix, dtype=torch.float32)
     rhotensor = rhotensor.unsqueeze(0).unsqueeze(0)
@@ -46,14 +51,13 @@ def cut_density_windows_torch_padded(df, window_dim,n_windows):
 
     rho_pad = torch.nn.functional.pad(rhotensor, (pad_size, pad_size,pad_size,pad_size), mode="circular")
     rho_pad = rho_pad.squeeze(0).squeeze(0)
-    unfolded_rho = rho_pad.unfold(0, window_dim, 1).unfold(1, window_dim, 1)
-    print(unfolded_rho.shape)
-    windows = unfolded_rho.squeeze(0).squeeze(0)
-    print(windows.shape)
+    unfolded_rho = rho_pad.unfold(0, window_dim,stride ).unfold(1, window_dim, stride)
+    values = mulocmatrix[::stride,::stride]
     windows = unfolded_rho.contiguous().view(-1, window_dim, window_dim)
-    print(windows.shape)
-    #windows = windows.to(device="cpu")
-    return windows
+    windows = windows.to(device="cpu")
+    values = torch.tensor(values, dtype=torch.float32)
+    values = values.flatten()
+    return windows,values
 
 def build_training_data(df, width,L,window_stack,center_values):
     n_windows = int(L/width)
@@ -61,9 +65,20 @@ def build_training_data(df, width,L,window_stack,center_values):
     window,center = cut_density_windows(df, window_dim,n_windows)
     return window_stack,center_values
 
+def build_training_data_torch(df, width,L):
+    n_windows = int(L/width)
+    
+    window_dim = int(np.sqrt(len(df))/n_windows)
+    print("window_dim",window_dim)
+    window_dim = int(np.sqrt(len(df))*width/L)
+    print("window_dim",window_dim)
+
+    window,center = cut_density_windows_torch_padded(df, window_dim)
+    return window,center
+
 
 def save_matrices(inputs,targets):
-    inputs = tensor(inputs,dtype=float32)
-    targets = tensor(targets,dtype=float32)
+    inputs = tensor(inputs)
+    targets = tensor(targets)
     save({"windows": inputs, "c1": targets}, "training_data_test.pt")
 
