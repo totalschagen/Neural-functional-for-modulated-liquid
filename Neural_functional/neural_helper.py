@@ -41,7 +41,7 @@ def cut_density_windows_torch_unpadded(df, window_dim,n_windows):
 
 ## NOTE: This function IS NOT WORKING CORRECTLY, stride optimized for GPUmem on local
 def cut_density_windows_torch_padded(df, window_dim):
-    stride = 18
+    stride = 1
     rhomatrix = df.pivot(index='y', columns='x', values='rho').values
     mulocmatrix = df.pivot(index='y', columns='x', values='muloc').values
     pad_size = window_dim//2
@@ -58,6 +58,24 @@ def cut_density_windows_torch_padded(df, window_dim):
     values = torch.tensor(values, dtype=torch.float32)
     values = values.flatten()
     return windows,values
+
+def cut_density_windows_torch_padded_modforsmallgpu(rhomatrix,mulocmatrix, window_dim):
+    stride = 1
+    pad_size = window_dim//2
+    rhotensor = torch.tensor(rhomatrix, dtype=torch.float32)
+    rhotensor = rhotensor.unsqueeze(0).unsqueeze(0)
+    rhotensor = rhotensor.to(device="cuda")
+    rho_pad = torch.nn.functional.pad(rhotensor, (pad_size, pad_size,pad_size,pad_size), mode="circular")
+    rho_pad = rho_pad.squeeze(0).squeeze(0)
+    unfolded_rho = rho_pad.unfold(0, window_dim,stride ).unfold(1, window_dim, stride)
+    values = mulocmatrix[::stride,::stride]
+    windows = unfolded_rho.contiguous().view(-1, window_dim, window_dim)
+    windows = windows.to(device="cpu")
+    values = torch.tensor(values, dtype=torch.float32)
+    values = values.flatten()
+    return windows,values
+
+
 
 def build_training_data(df, width,L,window_stack,center_values):
     n_windows = int(L/width)
@@ -76,9 +94,30 @@ def build_training_data_torch(df, width,L):
     window,center = cut_density_windows_torch_padded(df, window_dim)
     return window,center
 
+def build_training_data_torch_optimized(df, width,L):
+    n_windows = int(L/width)
+    
+    window_dim = int(np.sqrt(len(df))/n_windows)
+    print("window_dim",window_dim)
+    window_dim = int(np.sqrt(len(df))*width/L)
+    print("window_dim",window_dim)
+    rhomatrix = df.pivot(index='y', columns='x', values='rho').values
+    mulocmatrix = df.pivot(index='y', columns='x', values='muloc').values
+    shape = rhomatrix.shape
+    dim = shape[0]
+    for i in range(2):
+        for j in range(2):
+            rhomatrixsmall=rhomatrix[i*int(dim/2):(i+1)*int(dim/2),j*int(dim/2):(j+1)*int(dim/2)] 
+            mulocmatrixsmall=mulocmatrix[i*int(dim/2):(i+1)*int(dim/2),j*int(dim/2):(j+1)*int(dim/2)] 
+            window,center = cut_density_windows_torch_padded_modforsmallgpu(rhomatrix,mulocmatrix, window_dim)
+    return window,center
 
-def save_matrices(inputs,targets):
-    inputs = tensor(inputs)
-    targets = tensor(targets)
-    save({"windows": inputs, "c1": targets}, "training_data_test.pt")
-
+def reconstruct_values(values, stride, window_dim):
+    n_windows = int(np.sqrt(len(values)))
+    values = values.view(n_windows, n_windows)
+    print("values shape",values.shape)
+    values = values.repeat_interleave(stride, dim=0).repeat_interleave(stride, dim=1)
+    print("values shape",values.shape)
+#    values = values[:window_dim, :window_dim]
+    print("values shape",values.shape)
+    return values

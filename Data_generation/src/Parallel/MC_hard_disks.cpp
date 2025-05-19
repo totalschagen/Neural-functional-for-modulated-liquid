@@ -100,7 +100,7 @@ int main() {
   // tunable parameters
   #ifndef BULK
   #pragma omp parallel for
-  for(int m=1;m<50;m++){
+  for(int m=1;m<20;m++){
     SimulationState* state = new SimulationState();
 
     // create thread local random number generator
@@ -188,7 +188,7 @@ void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Et
   state->Nmsd = state->Nsim / state->Nprint;
 
   // Observable rho(x)
-  state->Nbins = 256*LLL_max/15; // bins for 1 period
+  state->Nbins = 256*LLL_max/25; // bins for 1 period
   printf("Number of bins: %d \n", state->Nbins);
   ////////////////////////////////////////////////////////////////////
   ////////////////// NO CHANGES IN THE FOLLOWING ! ///////////////////
@@ -242,7 +242,7 @@ void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Et
 	printf("|---------------------|\n");
 	printf("|   mixing finished!  |\n");
 	printf("|---------------------|\n");
-  float Amp_in = dist(rng)*10.0; 
+  float Amp_in = dist(rng)*3.0; 
   state->Amp = (Amp_in * 1.0);	
   #ifdef BULK
   state->Amp = 0.0;
@@ -1147,7 +1147,7 @@ void print_positions(SimulationState* state,int step) {
 void print_rhox_avg_c1(SimulationState* state,const fs::path& dir,int file_count) {
   std::string density_file_name = "rho_MC_2D_" + std::to_string(file_count) + ".dat";
   std::ofstream density_file(dir / density_file_name);
-  density_file << "x y rho muloc " << state->nperiods << " " << state->mu <<" " << state->packing_fraction  << "\n";
+  density_file << "x y rho muloc " << state->nperiods << " " << state->mu <<" " << state->packing_fraction << " "<<state->Amp  << "\n";
 
   double binarea = (state->Lx / state->Nbins)*(state->Ly / state->Nbins);
   for (int i = 0; i < state->Nbins; i++) {

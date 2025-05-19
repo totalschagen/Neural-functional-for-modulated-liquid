@@ -6,7 +6,7 @@ import neural_helper as helper
 parent_dir = os.path.dirname(os.getcwd())
 # Path to the Density_profiles directory
 density_profiles_dir = os.path.join(parent_dir, "Data_generation/Density_profiles")
-tag = "current_train"
+tag = "parallel2025-05-16_18-08-55"
 density_profiles_dir = os.path.join(density_profiles_dir, tag)
 
 
@@ -15,7 +15,7 @@ names= [f for f in os.listdir(density_profiles_dir) if os.path.isfile(os.path.jo
 window_stack = []
 value_stack = []
 
-for i in names[:7]:
+for i in names[12:24]:
     df,nperiod = helper.load_df(i,density_profiles_dir)
     # Get the number of rows and columns in the DataFrame
     df["muloc"]=np.log(df["rho"])+df["muloc"]
@@ -31,4 +31,6 @@ for i in range(1,len(window_stack)):
     value_tensor = torch.cat((value_tensor, value_stack[i]), 0)
 print(window_tensor.shape, value_tensor.shape)
 
-helper.save_matrices(window_tensor, value_tensor)
+torch.save({"windows": window_tensor, "c1": value_tensor}, "training_data_test.pt")
+
+
