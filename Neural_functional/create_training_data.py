@@ -15,7 +15,7 @@ names= [f for f in os.listdir(density_profiles_dir) if os.path.isfile(os.path.jo
 window_stack = []
 value_stack = []
 
-for i in names[12:24]:
+for i in names[:]:
     df,nperiod = helper.load_df(i,density_profiles_dir)
     # Get the number of rows and columns in the DataFrame
     df["muloc"]=np.log(df["rho"])+df["muloc"]

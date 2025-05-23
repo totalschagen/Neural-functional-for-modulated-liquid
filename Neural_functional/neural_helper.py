@@ -5,16 +5,37 @@ import os
 import matplotlib.pyplot as plt
 import torch
 
-def load_df(name,density_profiles_dir):
-    print("Loading dataframe: ",name)
-    name = os.path.join( density_profiles_dir, name)
+def load_df(name,tag):
+    parent_dir = os.path.dirname(os.getcwd())
+
+    density_profiles_dir = os.path.join(parent_dir, "Data_generation/Density_profiles")
+    name = os.path.join(parent_dir ,tag, name)
+    print("Reading file: ", name)
     df = pd.read_csv(name,delimiter = " ")
-    nperiod = (list(df.columns)[-2])
-    mu = (list(df.columns)[-1])
-    df.drop(columns=[mu],inplace=True)
-    df.drop(columns=[nperiod],inplace=True)
-    nperiod = int(nperiod)
-    return df,nperiod
+
+    extra=[]
+    try:
+        nperiod = (list(df.columns)[4])
+        df.drop(columns=[nperiod],inplace=True)
+        nperiod = int(nperiod)
+        extra.append(nperiod)
+    except:
+        print("No nperiod")
+    try:
+        mu = (list(df.columns)[4])
+        df.drop(columns=[mu],inplace=True) 
+        mu = float(mu)
+        extra.append(mu)
+    except:
+        print("No mu")
+    try:
+        packing = (list(df.columns)[4])
+        df.drop(columns=[packing],inplace=True)
+        packing = float(packing)
+        extra.append(packing)
+    except:
+        print("No packing")
+    return df, extra
 
 
 def cut_density_windows(df, window_dim,n_windows,window_stack,center_values):
@@ -41,7 +62,7 @@ def cut_density_windows_torch_unpadded(df, window_dim,n_windows):
 
 ## NOTE: This function IS NOT WORKING CORRECTLY, stride optimized for GPUmem on local
 def cut_density_windows_torch_padded(df, window_dim):
-    stride = 1
+    stride = 7
     rhomatrix = df.pivot(index='y', columns='x', values='rho').values
     mulocmatrix = df.pivot(index='y', columns='x', values='muloc').values
     pad_size = window_dim//2
@@ -64,7 +85,9 @@ def cut_density_windows_torch_padded_modforsmallgpu(rhomatrix,mulocmatrix, windo
     pad_size = window_dim//2
     rhotensor = torch.tensor(rhomatrix, dtype=torch.float32)
     rhotensor = rhotensor.unsqueeze(0).unsqueeze(0)
-    rhotensor = rhotensor.to(device="cuda")
+    #rhotensor = rhotensor.to(device="cuda")
+    print("rhotensor shape",rhotensor.shape)
+    print("pad_size",pad_size)
     rho_pad = torch.nn.functional.pad(rhotensor, (pad_size, pad_size,pad_size,pad_size), mode="circular")
     rho_pad = rho_pad.squeeze(0).squeeze(0)
     unfolded_rho = rho_pad.unfold(0, window_dim,stride ).unfold(1, window_dim, stride)
@@ -121,3 +144,51 @@ def reconstruct_values(values, stride, window_dim):
 #    values = values[:window_dim, :window_dim]
     print("values shape",values.shape)
     return values
+
+
+def neural_c1(model,rhomatrix):
+    """
+    This function takes a model and a rhomatrix (not too big) as input, and returns the neural c1 value.
+    """
+    _,_,window_dims,_ =next(model.children()).weight.shape
+    print("rhoshape",rhomatrix.shape)
+    window,_ = cut_density_windows_torch_padded_modforsmallgpu(rhomatrix,rhomatrix,window_dims)
+    model.eval()
+    outputs= []
+    with torch.no_grad():
+        for input in window:
+            input = input.unsqueeze(0)
+            input = input.to(torch.device("cuda"))
+            output = model(input)
+            output = output.cpu().numpy()
+            outputs.append(output)
+
+    c1_reconstruct = reconstruct_values(torch.tensor(np.array(outputs)), 1,window_dims)
+    return c1_reconstruct
+
+def picard_minimization(L,mu,T,dx,model,nperiod,Amp,alpha=0.3,max_iter=3000):
+    x = np.linspace(0,L,int(L/dx))
+    y = np.linspace(0,L,int(L/dx))
+    xg, yg = np.meshgrid(x, y)
+    rho = np.zeros((len(x), len(y)))
+    rhobuffer = rho.copy()
+    rho = rho + 0.01
+    delta = 1
+    i = 0
+    while delta > 0.1:
+        rhobuffer =np.exp(-potential(xg,nperiod,L,Amp)/T+mu/T)+np.array(neural_c1(model,rho)) 
+        rho = (1-alpha)*rho + alpha*rhobuffer
+        delta = np.max(np.abs(rho - rhobuffer))
+        i += 1
+        print("Iteration: ", i)
+        print("Delta: ", delta)
+        if i > max_iter:
+            print("Max iterations reached")
+            return 
+    return rho,xg,yg
+
+
+def potential(x,nperiod,L,Amp):
+    Lperiod = L/nperiod
+    V = Amp*np.cos(2*np.pi*x/Lperiod)
+    return V
