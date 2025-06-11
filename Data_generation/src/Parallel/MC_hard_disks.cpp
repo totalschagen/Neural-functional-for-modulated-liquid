@@ -79,12 +79,15 @@ int main() {
   std::string timestamp = get_timestamp_string();
   fs::path output_root = "Output";
   fs::path density_profiles_root = "Density_profiles";
+  fs::path positions_root = "Positions";
 
   fs::path output_dir = output_root / timestamp;
   fs::path density_profiles_dir = density_profiles_root / timestamp;
+  fs::path positions_dir = positions_root / timestamp;
 
   fs::create_directories(output_dir);
   fs::create_directories(density_profiles_dir);
+  fs::create_directories(positions_dir);
 //////////////////////////////////////////////////////////////////////
  //prepare file for packing fraction and particle number  
 
@@ -100,24 +103,95 @@ int main() {
   // tunable parameters
   #ifndef BULK
   #pragma omp parallel for
-  for(int m=1;m<20;m++){
+  for(int m=1;m<2;m++){
     SimulationState* state = new SimulationState();
-
+    state->Neq = 100000000;
+    state->Nsim = 500000001;
     // create thread local random number generator
     //std::random_device rd;
     std::mt19937 rng(m); // use the last digits of the seed and the loop index to create a unique seed for each thread
+    // specify fixed simulation parameters
     state->T = 1.0;
     state->radius = 0.5;
     state->Lx = SLX;
     state->Ly = state->Lx;
 
+    // fix bounds for random parameters
     double mu_min = -2.0;
+    float rr = 2*state->radius;
+    int LLL_min = int(state->Lx / 2*rr);
+    int LLL_max = int(state->Lx / 0.2*rr);  
     double mu_max = 8.0;
+
+    state->Nbins = 256*LLL_max/25; // bins for 1 period
+    // initialize random distributions for potential variations
     std::uniform_real_distribution<double> mudist(mu_min, mu_max);
+    std::uniform_real_distribution<double> ampdist(0.0, 3.0);
+    std::uniform_int_distribution<int> rand(LLL_min, LLL_max);
     state->mu = mudist(rng);
     //state->mu = 7.9;
     state->density = 3*0.1;
-    run_simulation(state,fout2,fout1,density_profiles_dir,m,rng); 
+    state->Amp_in = ampdist(rng);
+    int LLL = rand(rng);
+    state->Lperiod = double(state->Lx * 1.0) / double(LLL *1.0); 
+    state->nperiods = int((state->Lx + 0.000000001) / state->Lperiod);
+
+
+    state->Amp_in = 3.0;
+    state->Lperiod = double(state->Lx * 1.0) / 19.0;
+    state->mu = 6.1358;
+    run_simulation(state,fout2,fout1,density_profiles_dir,1,rng, positions_dir); 
+
+
+    SimulationState* state2 = new SimulationState();
+    state2->Neq = 100000000;
+    state2->Nsim = 500000001;
+    // create thread local random number generator
+    //std::random_device rd;
+    // specify fixed simulation parameters
+    state2->T = 1.0;
+    state2->radius = 0.5;
+    state2->Lx = SLX;
+    state2->Ly = state2->Lx;
+
+    // fix bounds for random parameters
+ 
+    state2->Nbins = 256*LLL_max/25; // bins for 1 period
+    // initialize random distributions for potential variations
+    //state->mu = 7.9;
+    state2->density = 3*0.1;
+
+
+    state2->Amp_in = 3.0;
+    state2->Lperiod = double(state2->Lx * 1.0) / 14.0;
+    state2->mu = 2.32542;
+    run_simulation(state2,fout2,fout1,density_profiles_dir,2,rng, positions_dir); 
+
+
+    SimulationState* state1 = new SimulationState();
+    state1->Neq = 100000000;
+    state1->Nsim = 500000001;
+    // create thread local random number generator
+    //std::random_device rd;
+    // specify fixed simulation parameters
+    state1->T = 1.0;
+    state1->radius = 0.5;
+    state1->Lx = SLX;
+    state1->Ly = state->Lx;
+
+    // fix bounds for random parameters
+    
+    state1->Nbins = 256*LLL_max/25; // bins for 1 period
+    // initialize random distributions for potential variations
+    
+    //state->mu = 7.9;
+    state1->density = 3*0.1;
+
+
+    state1->Amp_in = 3.0;
+    state1->Lperiod = double(state1->Lx * 1.0) / 42.0;
+    state1->mu = 5.1311;
+    run_simulation(state1,fout2,fout1,density_profiles_dir,3,rng, positions_dir); 
   }
   #endif
   #ifdef BULK
@@ -140,7 +214,7 @@ int main() {
   }
   #endif
 }
-void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Eta_out,const fs::path& dir,int file_count,std::mt19937& rng) {
+void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Eta_out,const fs::path& dir,int file_count,std::mt19937& rng,const fs::path& pos_dir) {
   std::uniform_real_distribution<double> dist(0.0, 1.0);
   clock_t begin = clock();
   time_t rawtime;
@@ -152,17 +226,7 @@ void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Et
 
   bool CL_check;
 
-  float rr = 2*state->radius;
-  int LLL_min = int(state->Lx / 2*rr);
-  int LLL_max = int(state->Lx / 0.2*rr);
-  std::uniform_int_distribution<int> rand(LLL_min, LLL_max);
-  int LLL = rand(rng);
-
-
-  state->Lperiod = double(state->Lx * 1.0) / double(LLL *1.0); 
-  state->nperiods = int((state->Lx + 0.000000001) / state->Lperiod);
-  //state ->nperiods = 55;
-  //state->Lperiod = state->Lx / state->nperiods;
+  
   state->Amp = 0.0;//initially for mixing
 
   ////////////////////////////////////////////////////////////////////
@@ -176,8 +240,7 @@ void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Et
   state->step_size = 0.01;
   state->step_size_xshift = 0.01;
   int N_mixing = 20000;   
-  state->Neq = 100000000;
-  state->Nsim = 500000001;
+
   state->Nprint = 5000;
   // int N_mixing = 200;   
   // Nprint = 100;
@@ -188,7 +251,6 @@ void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Et
   state->Nmsd = state->Nsim / state->Nprint;
 
   // Observable rho(x)
-  state->Nbins = 256*LLL_max/25; // bins for 1 period
   printf("Number of bins: %d \n", state->Nbins);
   ////////////////////////////////////////////////////////////////////
   ////////////////// NO CHANGES IN THE FOLLOWING ! ///////////////////
@@ -242,8 +304,7 @@ void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Et
 	printf("|---------------------|\n");
 	printf("|   mixing finished!  |\n");
 	printf("|---------------------|\n");
-  float Amp_in = dist(rng)*3.0; 
-  state->Amp = (Amp_in * 1.0);	
+  state->Amp = (state->Amp_in * 1.0);	
   #ifdef BULK
   state->Amp = 0.0;
   #endif
@@ -365,8 +426,7 @@ void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Et
   print_rhox_avg_c1(state,dir,file_count);
   #endif
   printf("\n");
-  //print_positions(Nsim);
-  printf("rand SEED: %d\n",rng);
+  print_positions(state,pos_dir,file_count);
   printf("Packing fraction = %f \n", state->packing_fraction);
   printf("Period = %f \n", state->Lperiod);
   printf("Amplitude = %f \n", state->Amp);
@@ -1126,21 +1186,16 @@ void print_gr(SimulationState* state,int step) {
 }
 
 // print particle positions
-void print_positions(SimulationState* state,int step) {
-
-  std::stringstream sstr;
-  sstr << "positions_seed" << lastDigits << "_step" << step << ".dat";
-  const std::string tmp = sstr.str();
-  const char *cstr = tmp.c_str();
-
-  FILE *out = fopen(cstr, "w");
+void print_positions(SimulationState* state,const fs::path& dir,int step) {
+  std::string posi_file_name = "positions_step" + std::to_string(step) + ".dat";
+  std::ofstream posi_file(dir / posi_file_name);
 
   for (int i = 0; i < state->N; i++) {
     // fprintf(out,"%f %f  %d %d\n",x[i],y[i],state->ix[i],iy[i]);
-    fprintf(out, "%f %f\n", state->x[i], state->y[i]); //,ix[i],iy[i]);
+    posi_file <<i << " " <<state->x[i] << " " <<state->y[i]<< "\n"; //,ix[i],iy[i]);
   }
 
-  fclose(out);
+  posi_file.close();
 }
 
 // print density profile
@@ -1183,4 +1238,10 @@ std::string get_timestamp_string() {
   std::stringstream ss;
   ss << "parallel" <<std::put_time(std::localtime(&now_time), "%Y-%m-%d_%H-%M-%S");
   return ss.str();
+}
+
+double potential(SimulationState* state,double x) {
+  // calculate potential at position x
+  double V = state->Amp * cos(2 * PI * x / state->Lperiod);
+  return V;
 }

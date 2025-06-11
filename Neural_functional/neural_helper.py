@@ -4,6 +4,7 @@ from torch import tensor,float32,save
 import os
 import matplotlib.pyplot as plt
 import torch
+from torch.func import vmap,jacrev
 
 def load_df(name,tag):
     parent_dir = os.path.dirname(os.getcwd())
@@ -187,6 +188,40 @@ def picard_minimization(L,mu,T,dx,model,nperiod,Amp,alpha=0.3,max_iter=3000):
             return 
     return rho,xg,yg
 
+def c2(model, rhomatrix, dx=0.01):
+    _,_,window_dims,_ =next(model.children()).weight.shape
+    print("rhoshape",rhomatrix.shape)
+    windows,_ = cut_density_windows_torch_padded_modforsmallgpu(rhomatrix,rhomatrix,window_dims)
+    print("windows shape",windows.shape)
+    windows = windows.detach().requires_grad_(True)
+    jacobiWindows = vmap(jacrev(model), in_dims=(0,))(windows)
+    print("jacobiWindows shape",jacobiWindows.shape)
+    # c1_result = result.numpy().flatten()
+    # if c2 == "unstacked":
+    #     return c1_result, jacobiWindows
+    # c2_result = np.row_stack([np.roll(np.pad(jacobiWindows[i], (0,rho.shape[0]-inputBins)), i-windowBins) for i in range(rho.shape[0])])
+    # return c1_result, c2_result
+
+
+def neural_c2(model,rhomatrix):
+    """
+    This function takes a model and a rhomatrix (not too big) as input, and returns the neural c1 value.
+    """
+    _,_,window_dims,_ =next(model.children()).weight.shape
+    print("rhoshape",rhomatrix.shape)
+    window,_ = cut_density_windows_torch_padded_modforsmallgpu(rhomatrix,rhomatrix,window_dims)
+    print("window shape",window.shape)
+    window = window.detach().requires_grad_(True)
+    model.eval()
+    outputs= []
+    for input in window:
+        input = input.unsqueeze(0)
+        input = input.to(torch.device("cuda"))
+        jacobian = torch.autograd.functional.jacobian(model, input)
+        jacobian = jacobian.squeeze().cpu().numpy()
+        outputs.append(jacobian)
+
+    print("outputs shape",np.array(outputs).shape)
 
 def potential(x,nperiod,L,Amp):
     Lperiod = L/nperiod
