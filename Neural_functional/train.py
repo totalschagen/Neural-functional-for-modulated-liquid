@@ -4,7 +4,9 @@ import torch
 import os
 import random
 import conv_network as net
+import neural_helper as helper
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"]="expandable_segments:True"
 
 SEED = 42
 random.seed(SEED)
@@ -44,9 +46,10 @@ val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=Fal
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False,worker_init_fn=worker_init_fn)
 
 model = net.conv_neural_func7()
+model.load_state_dict(torch.load("2d_conv.pth"))
 criterion = torch.nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-num_epochs = 600
+num_epochs = 200
 
 scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
 device = torch.device("cuda")
@@ -92,21 +95,11 @@ for epoch in range(num_epochs):
     val_loss /= len(val_loader)
     validation_loss.append(val_loss)
     print(f"Validation Loss: {val_loss:.4f}")
+torch.cuda.empty_cache()
 
-### Test loop
-model.eval()
-test_loss = 0.0
-with torch.no_grad():
-    for inputs, targets in test_loader:
-        inputs = inputs.to(device)
-        targets = targets.to(device)
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        test_loss += loss.item()
 
-test_loss /= len(test_loader)
+
 torch.save(model.state_dict(), "2d_conv.pth")
-print(f"Test Loss: {test_loss:.4f}")
 
 plt.figure()
 plt.plot(train_loss, label='Train Loss')
@@ -115,4 +108,4 @@ plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.title('Training and Validation Loss')
 plt.legend()
-plt.savefig("train_val_loss_conv.png")
+plt.savefig("train_val_loss_conv"+str(j)+".png")

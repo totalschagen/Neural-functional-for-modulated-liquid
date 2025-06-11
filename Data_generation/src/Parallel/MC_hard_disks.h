@@ -7,6 +7,7 @@ struct SimulationState {
     double density;
     double Lperiod;
     double Amp;
+    double Amp_in;
     int nperiods;
     double mu;
 
@@ -58,7 +59,7 @@ struct SimulationState {
 };
 
 
-void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Eta_out,const std::filesystem::path& dir,int file_count,std::mt19937& rng); 
+void run_simulation(SimulationState* state,std::ofstream& Nout,std::ofstream& Eta_out,const std::filesystem::path& dir,int file_count,std::mt19937& rng,const std::filesystem::path& pos_dir); 
 void pbc(SimulationState* state,double &x, double &y, int &ix, int &iy);
 void pbc_distance(SimulationState* state,double &x, double &y);
 int lattice_packing(SimulationState* state);
@@ -83,7 +84,7 @@ void check_particle_0(SimulationState* state);
 bool check_cell_lists(SimulationState* state);
 
 void print_gr(SimulationState* state,int step);
-void print_positions(SimulationState* state,int step);
+void print_positions(SimulationState* state,const std::filesystem::path& dir,int step);
 void print_rhox_avg_c1(SimulationState* state,const std::filesystem::path& dir,int file_count) ;
 
 void print_N(SimulationState* state,const char *cstr,int step);
